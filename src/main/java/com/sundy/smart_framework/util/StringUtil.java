@@ -4,6 +4,8 @@ import org.apache.commons.lang3.StringUtils;
 
 public class StringUtil {
 
+	public static final String SEPARATOR = ",";
+
 	public static boolean isNotEmpty(String value) {
 		return !isEmpty(value);
 	}

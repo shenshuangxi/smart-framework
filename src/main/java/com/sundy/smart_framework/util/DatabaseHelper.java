@@ -3,6 +3,7 @@ package com.sundy.smart_framework.util;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
+
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,50 @@ public class DatabaseHelper {
 		dataSource.setPassword(PASSWROD);
 	}
 	
+	public static void beginTransaction(){
+		Connection conn = getConnection();
+		if(conn!=null){
+			try {
+				conn.setAutoCommit(false);
+			} catch (SQLException e) {
+				logger.error("commit transaction failure", e);
+				throw new RuntimeException(e);
+			}finally{
+				CONNECTION_HOLDER.remove();
+			}
+		}
+	}
+	
+	public static void commitTransaction(){
+		Connection conn = getConnection();
+		if(conn!=null){
+			try {
+				conn.commit();
+				conn.close();
+			} catch (SQLException e) {
+				logger.error("commit transaction failure", e);
+				throw new RuntimeException(e);
+			}finally{
+				CONNECTION_HOLDER.remove();
+			}
+		}
+	}
+	
+	public static void rollbackTransaction(){
+		Connection conn = getConnection();
+		if(conn!=null){
+			try {
+				conn.rollback();
+				conn.close();
+			} catch (SQLException e) {
+				logger.error("rollback transaction failure", e);
+				throw new RuntimeException(e);
+			}finally{
+				CONNECTION_HOLDER.remove();
+			}
+		}
+	}
+	
 	public static Connection getConnection(){
 		Connection conn = CONNECTION_HOLDER.get();
 		if(conn==null){
@@ -42,6 +87,7 @@ public class DatabaseHelper {
 				CONNECTION_HOLDER.set(conn);
 			} catch (SQLException e) {
 				logger.error("get connection failure", e);
+				throw new RuntimeException(e);
 			}
 		}
 		

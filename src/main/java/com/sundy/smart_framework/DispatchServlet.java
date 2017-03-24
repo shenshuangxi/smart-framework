@@ -3,8 +3,6 @@ package com.sundy.smart_framework;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
-import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Map;
 
 import javax.servlet.ServletConfig;
@@ -24,11 +22,11 @@ import com.sundy.smart_framework.helper.BeanHelper;
 import com.sundy.smart_framework.helper.ConfigHelper;
 import com.sundy.smart_framework.helper.ControllerHelper;
 import com.sundy.smart_framework.helper.HelperLoader;
-import com.sundy.smart_framework.util.ArrayUtil;
-import com.sundy.smart_framework.util.CodecUtil;
+import com.sundy.smart_framework.helper.RequestHelper;
+import com.sundy.smart_framework.helper.ServletHelper;
+import com.sundy.smart_framework.helper.UploadHelper;
 import com.sundy.smart_framework.util.JsonUtil;
 import com.sundy.smart_framework.util.ReflectionUtil;
-import com.sundy.smart_framework.util.StreamUtil;
 import com.sundy.smart_framework.util.StringUtil;
 
 @WebServlet(urlPatterns="/*",loadOnStartup=0)
@@ -52,77 +50,86 @@ public class DispatchServlet extends HttpServlet {
 		ServletRegistration defaultServletRegistration = servletContext.getServletRegistration("default");
 		defaultServletRegistration.addMapping(ConfigHelper.getAppAssetPath()+"/*");
 		
-		
+		UploadHelper.init(servletContext);
 	}
 	
 	@Override
 	protected void service(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 
-		String requestMethod = request.getMethod().toLowerCase();
-		String requestPath = request.getPathInfo();
+		ServletHelper.init(request, response);
 		
-		Handler handler = ControllerHelper.getHandler(requestMethod, requestPath);
-		
-		if(handler!=null){
-			Class<?> controllerClass = handler.getControllerClass();
-			Method method = handler.getActionMethod();
-			Object controllerBean = BeanHelper.getBean(controllerClass);
-			Map<String,Object> paramMap = new HashMap<>();
-			Enumeration<String> paramNames = request.getParameterNames();
-			while(paramNames.hasMoreElements()){
-				String key = paramNames.nextElement();
-				String value = request.getParameter(key);
-				paramMap.put(key, value);
+		try {
+			String requestMethod = request.getMethod().toLowerCase();
+			String requestPath = request.getPathInfo();
+			
+			if(requestPath.equals("/favicon.ico")){
+				return;
 			}
 			
-			String body = CodecUtil.decodeURL(StreamUtil.getString(request.getInputStream()));
-			if(StringUtil.isNotEmpty(body)){
-				String[] params = body.split("&");
-				if(ArrayUtil.isNotEmpty(params)){
-					for(String param : params){
-						String[] array = param.split("=");
-						if(ArrayUtil.isNotEmpty(array)){
-							String paramName = array[0];
-							String paramValue = array[1];
-							paramMap.put(paramName, paramValue);
-						}
-					}
+			Handler handler = ControllerHelper.getHandler(requestMethod, requestPath);
+			
+			if(handler!=null){
+				Class<?> controllerClass = handler.getControllerClass();
+				Method method = handler.getActionMethod();
+				Object controllerBean = BeanHelper.getBean(controllerClass);
+				
+				Param param;
+				if(UploadHelper.isMultipart(request)){
+					param = UploadHelper.createParam(request);
+				}else{
+					param = RequestHelper.createParam(request);
+				}
+				
+				
+				Object result = null;
+				if(param.isEmpty()){
+					result = ReflectionUtil.invokeMethod(controllerBean, method);
+				}else{
+					result = ReflectionUtil.invokeMethod(controllerBean, method, param);
+				}
+				if(result instanceof View){
+					handleViewResult(request, response, result);
+				}else if(result instanceof Data){
+					handleDataResult(response, result);
 				}
 			}
-			
-			Param param = new Param(paramMap);
-			Object result = ReflectionUtil.invokeMethod(controllerBean, method, param);
-			
-			if(result instanceof View){
-				View view = (View) result;
-				String path = view.getPath();
-				if(StringUtil.isNotEmpty(path)){
-					if(path.startsWith("/")){
-						response.sendRedirect(request.getContextPath()+path);
-					}else{
-						Map<String,Object> model = view.getModel();
-						for(Map.Entry<String, Object> entry : model.entrySet()){
-							request.setAttribute(entry.getKey(), entry.getValue());
-						}
-						request.getRequestDispatcher(ConfigHelper.getAppJspPath()+path).forward(request, response);
-					}
-				}
-			}else if(result instanceof Data){
-				Object model = ((Data) result).getModel();
-				if(model!=null){
-					response.setContentType("application/json");
-					response.setCharacterEncoding("UTF-8");
-					PrintWriter pw = response.getWriter();
-					String json = JsonUtil.toJson(model);
-					pw.write(json);
-					pw.flush();
-					pw.close();
-				}
-			}
-			
+		} finally{
+			ServletHelper.destroy();
 		}
-		
+	}
 	
+	
+
+	private void handleDataResult(HttpServletResponse response, Object result)
+			throws IOException {
+		Object model = ((Data) result).getModel();
+		if(model!=null){
+			response.setContentType("application/json");
+			response.setCharacterEncoding("UTF-8");
+			PrintWriter pw = response.getWriter();
+			String json = JsonUtil.toJson(model);
+			pw.write(json);
+			pw.flush();
+			pw.close();
+		}
+	}
+
+	private void handleViewResult(HttpServletRequest request,
+			HttpServletResponse response, Object result) throws IOException,
+			ServletException {
+		View view = (View) result;
+		String path = view.getPath();
+		if(StringUtil.isNotEmpty(path)){
+			if(path.startsWith("/")){
+				response.sendRedirect(request.getContextPath()+path);
+			}else{
+				Map<String,Object> model = view.getModel();
+				for(Map.Entry<String, Object> entry : model.entrySet()){
+					request.setAttribute(entry.getKey(), entry.getValue());
+				}
+				request.getRequestDispatcher(ConfigHelper.getAppJspPath()+path).forward(request, response);
+			}
+		}
 	}
 
 	

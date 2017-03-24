@@ -22,6 +22,14 @@ public class BeanHelper {
 		return BEAN_MAP;
 	}
 	
+	
+	
+	public static void setBean(Class<?> clazz, Object obj) {
+		BEAN_MAP.put(clazz, obj);
+	}
+
+
+
 	@SuppressWarnings("unchecked")
 	public static <T> T getBean(Class<T> clazz){
 		if(!BEAN_MAP.containsKey(clazz)){
